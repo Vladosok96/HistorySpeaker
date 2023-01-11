@@ -1,7 +1,7 @@
 import os
 
 from gevent.pywsgi import WSGIServer
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 import wave
 import sys
 import json
@@ -17,7 +17,7 @@ ALLOWED_EXTENSIONS = {'wav'}
 
 
 def get_response_json(number, text, error):
-    return f'{{"response": {number}, "text": "{text}", "error": "{error}"}}'
+    return f'{{"response": "{number}", "text": "{text}", "error": "{error}"}}'
 
 
 def is_contains(operand, words):
@@ -32,9 +32,31 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route("/")
+@app.route('/')
 def hello_world():
-    return render_template("index.html")
+    return render_template('index.html')
+
+
+@app.route('/configuration/', methods=['POST', 'GET'])
+def configuration():
+    if request.method == 'POST':
+        file = request.files['file']
+        try:
+            config = json.load(file.stream)
+            with open(os.path.join(app.config['UPLOAD_FOLDER'], 'files/config.json'), "w", encoding='utf8') as outfile:
+                json.dump(config, outfile, ensure_ascii=False)
+            return render_template('upload.html', result=str(config))
+        except:
+            return 'invalid json'
+
+    with open(os.path.join(app.config['UPLOAD_FOLDER'], 'files/config.json'), encoding='utf8') as jsonfile:
+        grammar = json.load(jsonfile)
+    return render_template('upload.html', result=str(grammar))
+
+
+@app.route('/download_configuration/')
+def download_configuration():
+    return send_file(os.path.join(app.config['UPLOAD_FOLDER'], 'files/config.json'), as_attachment=True)
 
 
 @app.route('/voice/', methods=['POST'])
@@ -44,10 +66,9 @@ def upload_file():
 
     os.system(f"ffmpeg -loglevel quiet -y -i {os.path.join(app.config['UPLOAD_FOLDER'], 'audio/raw.webm')} -ac 1 -f wav {os.path.join(app.config['UPLOAD_FOLDER'], 'audio/raw.wav')}")
 
-    wf = wave.open(os.path.join(app.config['UPLOAD_FOLDER'], 'audio/raw.wav'), "rb")
-    if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
-        print("Audio file must be WAV format mono PCM.")
-        sys.exit(1)
+    wf = wave.open(os.path.join(app.config['UPLOAD_FOLDER'], 'audio/raw.wav'), 'rb')
+    if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != 'NONE':
+        return get_response_json('0', '', 'invalid audio')
 
     model = Model(lang="ru")
 
@@ -68,40 +89,16 @@ def upload_file():
     recognized_words = result['result']
     recognized_text = result['text']
 
+    with open('static/files/config.json', encoding='utf8') as jsonfile:
+        grammar = json.load(jsonfile)
+
     for word in recognized_words:
         word_text = word['word']
-        if is_contains(word_text, ['одинадцат', 'одиннадцат']):
-            return get_response_json(11, recognized_text, 0)
-        if is_contains(word_text, ['двенадцат', 'двеннадцат']):
-            return get_response_json(12, recognized_text, 0)
-        if is_contains(word_text, ['тринадцат', 'триннадцат']):
-            return get_response_json(13, recognized_text, 0)
-        if is_contains(word_text, ['четырнадцат']):
-            return get_response_json(14, recognized_text, 0)
-        if is_contains(word_text, ['пятнадцат']):
-            return get_response_json(15, recognized_text, 0)
-        if is_contains(word_text, ['один', 'перв']):
-            return get_response_json(1, recognized_text, 0)
-        if is_contains(word_text, ['два', 'втор']):
-            return get_response_json(2, recognized_text, 0)
-        if is_contains(word_text, ['три', 'трет']):
-            return get_response_json(3, recognized_text, 0)
-        if is_contains(word_text, ['четыре', 'четв']):
-            return get_response_json(4, recognized_text, 0)
-        if is_contains(word_text, ['пять', 'пят']):
-            return get_response_json(5, recognized_text, 0)
-        if is_contains(word_text, ['шест']):
-            return get_response_json(6, recognized_text, 0)
-        if is_contains(word_text, ['восемь', 'восьм']):
-            return get_response_json(8, recognized_text, 0)
-        if is_contains(word_text, ['семь', 'седьм']):
-            return get_response_json(7, recognized_text, 0)
-        if is_contains(word_text, ['девять', 'девят']):
-            return get_response_json(9, recognized_text, 0)
-        if is_contains(word_text, ['десять', 'десят']):
-            return get_response_json(10, recognized_text, 0)
+        for key in grammar.keys():
+            if is_contains(word_text, grammar[key]):
+                return get_response_json(key, recognized_text, 0)
 
-    return get_response_json(0, recognized_text, "failed to recognize command")
+    return get_response_json('0', recognized_text, 'failed to recognize command')
 
 
 if __name__ == "__main__":
