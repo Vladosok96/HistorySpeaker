@@ -10,6 +10,10 @@ from vosk import Model, KaldiRecognizer, SetLogLevel
 
 SetLogLevel(-1)
 
+print("start model loading...")
+model = Model(model_name="vosk-model-ru-0.22")
+print("model loaded")
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'bruhbruh'
 app.config['UPLOAD_FOLDER'] = 'static'
@@ -70,8 +74,6 @@ def upload_file():
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != 'NONE':
         return get_response_json('0', '', 'invalid audio')
 
-    model = Model(lang="ru")
-
     rec = KaldiRecognizer(model, wf.getframerate())
     rec.SetWords(True)
     rec.SetPartialWords(True)
@@ -89,14 +91,23 @@ def upload_file():
     recognized_words = result['result']
     recognized_text = result['text']
 
+    print(recognized_text)
+
     with open('static/files/config.json', encoding='utf8') as jsonfile:
         grammar = json.load(jsonfile)
 
-    for word in recognized_words:
-        word_text = word['word']
-        for key in grammar.keys():
-            if is_contains(word_text, grammar[key]):
+    for key in grammar.keys():
+        for word in grammar[key]:
+            if word in recognized_text:
+                print(recognized_text, grammar[key])
                 return get_response_json(key, recognized_text, 0)
+
+    # for word in recognized_words:
+    #     word_text = word['word']
+    #     for key in grammar.keys():
+    #         if is_contains(word_text, grammar[key]):
+    #             print(word_text, grammar[key])
+    #             return get_response_json(key, recognized_text, 0)
 
     return get_response_json('0', recognized_text, 'failed to recognize command')
 
